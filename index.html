@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>랜덤 자리 배치</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --ink: #1f2430;
+    --sub: #6b7280;
+    --line: #e2e5ea;
+    --accent: #4f6df5;
+    --accent-ink: #ffffff;
+    --empty-bg: #eceef1;
+    --empty-ink: #b2b8c2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d;
+      --card: #21242c;
+      --ink: #eef0f4;
+      --sub: #9aa1ad;
+      --line: #333844;
+      --accent: #6f8bff;
+      --accent-ink: #0e1016;
+      --empty-bg: #2a2d35;
+      --empty-ink: #565c68;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .meta { color: var(--sub); font-size: 0.85rem; margin-bottom: 20px; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    padding: 10px 16px;
+    background: var(--card);
+    color: var(--ink);
+  }
+  button.primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  button.ghost { background: transparent; color: var(--sub); font-size: 0.85rem; padding: 8px 12px; }
+  button:active { transform: translateY(1px); }
+
+  .room {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .room-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--sub);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .room-header span.screen { flex: 1; text-align: center; }
+
+  .grid { display: flex; flex-direction: column; gap: 8px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr) 18px repeat(3, 1fr); gap: 8px; }
+  .seat {
+    border-radius: 10px;
+    padding: 8px 4px;
+    text-align: center;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: var(--bg);
+    border: 1px solid var(--line);
+  }
+  .seat .num { font-size: 0.65rem; color: var(--sub); }
+  .seat .name { font-size: 0.95rem; font-weight: 600; margin-top: 2px; }
+  .seat.empty {
+    background: transparent;
+    border: 1px dashed var(--line);
+    color: var(--empty-ink);
+    justify-content: center;
+  }
+  .seat.empty .num { color: var(--empty-ink); font-size: 0.7rem; }
+  .aisle { }
+
+  .placeholder { text-align: center; color: var(--sub); padding: 30px 10px; }
+
+  details.history-panel { margin-top: 24px; }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 8px 0;
+  }
+  .history-entry {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    background: var(--card);
+  }
+  .history-entry .when {
+    font-size: 0.8rem;
+    color: var(--sub);
+    margin-bottom: 8px;
+  }
+  .history-mini { display: flex; flex-direction: column; gap: 4px; }
+  .history-mini .row { grid-template-columns: repeat(3, 1fr) 10px repeat(3, 1fr); gap: 4px; }
+  .history-mini .seat { min-height: auto; padding: 4px 2px; }
+  .history-mini .seat .name { font-size: 0.7rem; font-weight: 500; margin-top: 0; }
+  .history-mini .seat.empty .num { font-size: 0.6rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>랜덤 자리 배치</h1>
+  <div class="meta">학생 <span id="studentCount"></span>명 · 좌석 30개 중 2개 미사용 · 새로 뽑을 때마다 과거에 옆자리였던 조합은 최대한 피합니다. 이력은 SQLite에 영구 저장됩니다.</div>
+  <div class="meta" id="serverError" style="color:#e0554f; display:none;"></div>
+
+  <div class="toolbar">
+    <button class="primary" id="drawBtn">🎲 다시 뽑기</button>
+    <button class="ghost" id="clearBtn">이력 초기화</button>
+    <span class="meta" id="lastDrawn" style="margin:0;"></span>
+  </div>
+
+  <div class="room">
+    <div class="room-header">
+      <span>🚪 문</span>
+      <span class="screen">🖥️ 스크린</span>
+      <span></span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <details class="history-panel" id="historyPanel">
+    <summary>지난 배치 이력 (<span id="historyCount">0</span>건)</summary>
+    <div id="historyList"></div>
+  </details>
+</div>
+
+<script>
+  const STUDENTS = [
+    "신재민","이학림","박준석","김종하","최수빈","박정수","박정욱","강윤호",
+    "김성윤","김원겸","이지은","양대건","방용환","김혜현","소원","홍석진",
+    "장윤석","정해원","김상훈","남창균","김관현","박규은","김민준","이은영",
+    "정원정","정슬기","함형우","김재원"
+  ];
+
+  const GRID_LAYOUT = [
+    [1, 2, 3, 4, 5, 6],
+    [null, 7, 8, 9, 10, 11],
+    [12, null, 13, 14, 15, 16],
+    [17, 18, 19, 20, 21, 22],
+    [23, 24, 25, 26, 27, 28]
+  ];
+
+  const SEAT_NUMBERS = GRID_LAYOUT.flat().filter(v => v !== null);
+
+  function buildAdjacencyPairs(grid) {
+    const pairs = [];
+    const rows = grid.length, cols = grid[0].length;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const seat = grid[r][c];
+        if (seat == null) continue;
+        // horizontal neighbor, but skip across the center aisle (col index 2 -> 3)
+        if (c + 1 < cols && c !== 2) {
+          const right = grid[r][c + 1];
+          if (right != null) pairs.push([seat, right]);
+        }
+        // vertical neighbor (front/back)
+        if (r + 1 < rows) {
+          const down = grid[r + 1][c];
+          if (down != null) pairs.push([seat, down]);
+        }
+      }
+    }
+    return pairs;
+  }
+
+  const ADJACENCY_PAIRS = buildAdjacencyPairs(GRID_LAYOUT);
+
+  function pairKey(a, b) { return [a, b].sort().join("___"); }
+
+  async function loadHistory() {
+    const res = await fetch("/api/history");
+    if (!res.ok) throw new Error("이력을 불러오지 못했습니다 (" + res.status + ")");
+    return res.json();
+  }
+
+  async function saveEntry(entry) {
+    const res = await fetch("/api/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!res.ok) throw new Error("배치를 저장하지 못했습니다 (" + res.status + ")");
+    return res.json();
+  }
+
+  async function clearHistoryOnServer() {
+    const res = await fetch("/api/history", { method: "DELETE" });
+    if (!res.ok) throw new Error("이력을 초기화하지 못했습니다 (" + res.status + ")");
+  }
+
+  function computePairCounts(history) {
+    const counts = {};
+    for (const entry of history) {
+      const seatToStudent = entry.seatToStudent;
+      for (const [a, b] of ADJACENCY_PAIRS) {
+        const sA = seatToStudent[a], sB = seatToStudent[b];
+        if (!sA || !sB) continue;
+        const key = pairKey(sA, sB);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function generateArrangement(students, seatNumbers, pairCounts, attempts = 400) {
+    let best = null, bestScore = Infinity;
+    for (let i = 0; i < attempts; i++) {
+      const shuffled = shuffle(students);
+      const seatToStudent = {};
+      seatNumbers.forEach((seat, idx) => { seatToStudent[seat] = shuffled[idx]; });
+      let score = 0;
+      for (const [a, b] of ADJACENCY_PAIRS) {
+        score += pairCounts[pairKey(seatToStudent[a], seatToStudent[b])] || 0;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        best = seatToStudent;
+      }
+      if (bestScore === 0) break;
+    }
+    return best;
+  }
+
+  function renderSeatRows(target, seatToStudent, emptyLabel) {
+    target.innerHTML = "";
+    for (const row of GRID_LAYOUT) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "row";
+      row.forEach((seat, idx) => {
+        const cell = document.createElement("div");
+        if (seat == null) {
+          cell.className = "seat empty";
+          cell.innerHTML = `<div class="num">${emptyLabel}</div>`;
+        } else {
+          cell.className = "seat";
+          const name = seatToStudent ? (seatToStudent[seat] || "") : "";
+          cell.innerHTML = `<div class="num">${seat}</div><div class="name">${name}</div>`;
+        }
+        rowEl.appendChild(cell);
+        if (idx === 2) {
+          const aisle = document.createElement("div");
+          aisle.className = "aisle";
+          rowEl.appendChild(aisle);
+        }
+      });
+      target.appendChild(rowEl);
+    }
+  }
+
+  function renderGrid(target, seatToStudent) {
+    renderSeatRows(target, seatToStudent, "사용 안 함");
+  }
+
+  function renderMiniGrid(seatToStudent) {
+    const wrap = document.createElement("div");
+    wrap.className = "history-mini";
+    renderSeatRows(wrap, seatToStudent, "-");
+    return wrap;
+  }
+
+  function formatWhen(ts) {
+    const d = new Date(ts);
+    return d.toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderHistory(history) {
+    document.getElementById("historyCount").textContent = history.length;
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+    [...history].reverse().forEach(entry => {
+      const box = document.createElement("div");
+      box.className = "history-entry";
+      const when = document.createElement("div");
+      when.className = "when";
+      when.textContent = formatWhen(entry.ts);
+      box.appendChild(when);
+      box.appendChild(renderMiniGrid(entry.seatToStudent));
+      list.appendChild(box);
+    });
+  }
+
+  function renderLastDrawn(history) {
+    const el = document.getElementById("lastDrawn");
+    if (history.length === 0) {
+      el.textContent = "";
+      return;
+    }
+    el.textContent = "마지막 배치: " + formatWhen(history[history.length - 1].ts);
+  }
+
+  function showServerError(err) {
+    const el = document.getElementById("serverError");
+    el.textContent = "⚠ " + err.message + " — node server.js 로 서버를 실행한 뒤 http://localhost:3000 으로 접속했는지 확인하세요.";
+    el.style.display = "block";
+  }
+
+  function hideServerError() {
+    document.getElementById("serverError").style.display = "none";
+  }
+
+  async function init() {
+    document.getElementById("studentCount").textContent = STUDENTS.length;
+    const gridEl = document.getElementById("grid");
+    const drawBtn = document.getElementById("drawBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    let history = [];
+
+    try {
+      history = await loadHistory();
+      hideServerError();
+    } catch (err) {
+      showServerError(err);
+      gridEl.innerHTML = `<div class="placeholder">서버에 연결할 수 없습니다.</div>`;
+      return;
+    }
+
+    if (history.length === 0) {
+      gridEl.innerHTML = `<div class="placeholder">"다시 뽑기" 버튼을 눌러 자리를 배정하세요.</div>`;
+    } else {
+      renderGrid(gridEl, history[history.length - 1].seatToStudent);
+    }
+    renderHistory(history);
+    renderLastDrawn(history);
+
+    drawBtn.addEventListener("click", async () => {
+      drawBtn.disabled = true;
+      try {
+        const pairCounts = computePairCounts(history);
+        const seatToStudent = generateArrangement(STUDENTS, SEAT_NUMBERS, pairCounts);
+        const saved = await saveEntry({ ts: Date.now(), seatToStudent });
+        history.push(saved);
+        renderGrid(gridEl, seatToStudent);
+        renderHistory(history);
+        renderLastDrawn(history);
+        hideServerError();
+      } catch (err) {
+        showServerError(err);
+      } finally {
+        drawBtn.disabled = false;
+      }
+    });
+
+    clearBtn.addEventListener("click", async () => {
+      if (!confirm("저장된 배치 이력을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+      try {
+        await clearHistoryOnServer();
+        history = [];
+        gridEl.innerHTML = `<div class="placeholder">"다시 뽑기" 버튼을 눌러 자리를 배정하세요.</div>`;
+        renderHistory(history);
+        renderLastDrawn(history);
+        hideServerError();
+      } catch (err) {
+        showServerError(err);
+      }
+    });
+  }
+
+  init();
+</script>
+</body>
+</html>
