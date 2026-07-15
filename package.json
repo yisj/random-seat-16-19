@@ -2,7 +2,7 @@
   "name": "random-seat",
   "private": true,
   "version": "1.0.0",
-  "description": "랜덤 자리 배치 프로그램 (SQLite 영구 저장)",
+  "description": "랜덤 자리 배치 프로그램",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
