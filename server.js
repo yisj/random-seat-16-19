@@ -104,6 +104,26 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    const historyIdMatch = url.pathname.match(/^\/api\/history\/(\d+)$/);
+    if (historyIdMatch && req.method === 'PUT') {
+      const id = Number(historyIdMatch[1]);
+      const body = await readJsonBody(req);
+      if (!body || typeof body.seatToStudent !== 'object' || body.seatToStudent === null) {
+        sendJson(res, 400, { error: 'invalid payload' });
+        return;
+      }
+      const info = db
+        .prepare('UPDATE arrangements SET seat_to_student = ? WHERE id = ?')
+        .run(JSON.stringify(body.seatToStudent), id);
+      if (info.changes === 0) {
+        sendJson(res, 404, { error: 'not found' });
+        return;
+      }
+      const row = db.prepare('SELECT id, ts, seat_to_student FROM arrangements WHERE id = ?').get(id);
+      sendJson(res, 200, { id: row.id, ts: row.ts, seatToStudent: JSON.parse(row.seat_to_student) });
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Not Found');
   } catch (err) {
