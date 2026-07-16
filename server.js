@@ -95,13 +95,6 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       }
-
-      if (req.method === 'DELETE') {
-        db.exec('DELETE FROM arrangements');
-        res.writeHead(204);
-        res.end();
-        return;
-      }
     }
 
     const historyIdMatch = url.pathname.match(/^\/api\/history\/(\d+)$/);
@@ -121,6 +114,18 @@ const server = http.createServer(async (req, res) => {
       }
       const row = db.prepare('SELECT id, ts, seat_to_student FROM arrangements WHERE id = ?').get(id);
       sendJson(res, 200, { id: row.id, ts: row.ts, seatToStudent: JSON.parse(row.seat_to_student) });
+      return;
+    }
+
+    if (historyIdMatch && req.method === 'DELETE') {
+      const id = Number(historyIdMatch[1]);
+      const info = db.prepare('DELETE FROM arrangements WHERE id = ?').run(id);
+      if (info.changes === 0) {
+        sendJson(res, 404, { error: 'not found' });
+        return;
+      }
+      res.writeHead(204);
+      res.end();
       return;
     }
 

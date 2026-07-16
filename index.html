@@ -179,7 +179,6 @@
     <button class="primary" id="drawBtn">🎲 다시 뽑기</button>
     <button class="ghost" id="excludeBtn">🚫 제외 좌석 선택</button>
     <button class="ghost" id="editBtn">✏️ 편집</button>
-    <button class="ghost" id="clearBtn">이력 초기화</button>
     <span class="meta" id="lastDrawn" style="margin:0;"></span>
   </div>
   <div class="mode-hint" id="excludeHint"></div>
@@ -277,9 +276,9 @@
     return res.json();
   }
 
-  async function clearHistoryOnServer() {
-    const res = await fetch("/api/history", { method: "DELETE" });
-    if (!res.ok) throw new Error("이력을 초기화하지 못했습니다 (" + res.status + ")");
+  async function deleteEntry(id) {
+    const res = await fetch("/api/history/" + id, { method: "DELETE" });
+    if (!res.ok) throw new Error("배치를 삭제하지 못했습니다 (" + res.status + ")");
   }
 
   function computePairCounts(history) {
@@ -461,7 +460,6 @@
     const drawBtn = document.getElementById("drawBtn");
     const editBtn = document.getElementById("editBtn");
     const excludeBtn = document.getElementById("excludeBtn");
-    const clearBtn = document.getElementById("clearBtn");
     const editHint = document.getElementById("editHint");
     const excludeHint = document.getElementById("excludeHint");
     let history = [];
@@ -524,11 +522,19 @@
         const when = document.createElement("span");
         when.className = "when";
         when.textContent = formatWhen(entry.ts);
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "6px";
         const entryEditBtn = document.createElement("button");
         entryEditBtn.className = "ghost small";
         entryEditBtn.textContent = "✏️ 수정";
+        const entryDeleteBtn = document.createElement("button");
+        entryDeleteBtn.className = "ghost small";
+        entryDeleteBtn.textContent = "🗑️ 삭제";
+        actions.appendChild(entryEditBtn);
+        actions.appendChild(entryDeleteBtn);
         head.appendChild(when);
-        head.appendChild(entryEditBtn);
+        head.appendChild(actions);
         box.appendChild(head);
 
         const miniGrid = renderMiniGrid(entry.seatToStudent);
@@ -560,6 +566,20 @@
           miniGrid.querySelectorAll(".seat").forEach((c) => c.classList.toggle("editable", entryEditing));
           if (!entryEditing) {
             miniGrid.querySelectorAll(".seat.selected").forEach((c) => c.classList.remove("selected"));
+          }
+        });
+
+        entryDeleteBtn.addEventListener("click", async () => {
+          if (!confirm(formatWhen(entry.ts) + " 배치를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+          try {
+            await deleteEntry(entry.id);
+            history = history.filter((e) => e.id !== entry.id);
+            refreshMainGrid();
+            renderHistory();
+            renderLastDrawn();
+            hideServerError();
+          } catch (err) {
+            showServerError(err);
           }
         });
 
@@ -646,20 +666,6 @@
       refreshMainGrid();
     });
 
-    clearBtn.addEventListener("click", async () => {
-      if (!confirm("저장된 배치 이력을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
-      try {
-        await clearHistoryOnServer();
-        history = [];
-        manualUnused.clear();
-        refreshMainGrid();
-        renderHistory();
-        renderLastDrawn();
-        hideServerError();
-      } catch (err) {
-        showServerError(err);
-      }
-    });
   }
 
   init();
